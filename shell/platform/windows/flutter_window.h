@@ -5,6 +5,7 @@
 #ifndef FLUTTER_SHELL_PLATFORM_WINDOWS_FLUTTER_WINDOW_H_
 #define FLUTTER_SHELL_PLATFORM_WINDOWS_FLUTTER_WINDOW_H_
 
+#include <windows.ui.composition.h>
 #include <string>
 #include <vector>
 
@@ -36,10 +37,13 @@ class FlutterWindow : public KeyboardManager::WindowDelegate,
                       public WindowBindingHandler {
  public:
   // Create flutter Window for use as child window
-  FlutterWindow(int width,
-                int height,
-                std::unique_ptr<WindowsProcTable> windows_proc_table = nullptr,
-                std::unique_ptr<TextInputManager> text_input_manager = nullptr);
+  FlutterWindow(
+      int width,
+      int height,
+      Microsoft::WRL::ComPtr<ABI::Windows::UI::Composition::ICompositor>
+          compositor = nullptr,
+      std::unique_ptr<WindowsProcTable> windows_proc_table = nullptr,
+      std::unique_ptr<TextInputManager> text_input_manager = nullptr);
 
   virtual ~FlutterWindow();
 
@@ -394,6 +398,8 @@ class FlutterWindow : public KeyboardManager::WindowDelegate,
 
   // Implements IRawElementProviderFragmentRoot when UIA is enabled.
   std::unique_ptr<ui::AXFragmentRootWin> ax_fragment_root_;
+
+  Microsoft::WRL::ComPtr<ABI::Windows::UI::Composition::IVisual> visual_;
 
   // Allow WindowAXFragmentRootDelegate to access protected method.
   friend class WindowAXFragmentRootDelegate;

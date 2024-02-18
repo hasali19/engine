@@ -15,6 +15,7 @@
 // Windows platform specific includes
 #include <d3d11.h>
 #include <windows.h>
+#include <windows.ui.composition.interop.h>
 #include <wrl/client.h>
 #include <memory>
 
@@ -96,6 +97,8 @@ class AngleSurfaceManager {
   // Gets the |ID3D11Device| chosen by ANGLE.
   bool GetDevice(ID3D11Device** device);
 
+  bool AcquireFrame();
+
  protected:
   // Creates a new surface manager retaining reference to the passed-in target
   // for the lifetime of the manager.
@@ -137,6 +140,10 @@ class AngleSurfaceManager {
 
   // The current D3D device.
   Microsoft::WRL::ComPtr<ID3D11Device> resolved_device_;
+
+  Microsoft::WRL::ComPtr<
+      ABI::Windows::UI::Composition::ICompositionDrawingSurfaceInterop>
+      composition_drawing_surface_interop_;
 
   // Number of active instances of AngleSurfaceManager
   static int instance_count_;

@@ -7,6 +7,8 @@
 
 #include <windows.h>
 
+#include <windows.ui.composition.h>
+#include <wrl.h>
 #include <string>
 #include <variant>
 
@@ -39,9 +41,14 @@ struct PointerLocation {
 // Type representing an underlying platform window.
 using PlatformWindow = HWND;
 
+struct CompositionRenderTarget {
+  HWND window;
+  Microsoft::WRL::ComPtr<ABI::Windows::UI::Composition::IVisual> visual;
+};
+
 // Type representing a platform object that can be accepted by the Angle
 // rendering layer to bind to and render pixels into.
-using WindowsRenderTarget = std::variant<HWND>;
+using WindowsRenderTarget = std::variant<HWND, CompositionRenderTarget>;
 
 // Abstract class for binding Windows platform windows to Flutter views.
 class WindowBindingHandler {

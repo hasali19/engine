@@ -74,17 +74,16 @@ uint32_t FlutterWindowsView::GetFrameBufferId(size_t width, size_t height) {
   // Called on an engine-controlled (non-platform) thread.
   std::unique_lock<std::mutex> lock(resize_mutex_);
 
-  if (resize_status_ != ResizeState::kResizeStarted) {
-    return kWindowFrameBufferID;
-  }
-
-  if (resize_target_width_ == width && resize_target_height_ == height) {
+  if (resize_status_ == ResizeState::kResizeStarted &&
+      resize_target_width_ == width && resize_target_height_ == height) {
     // Platform thread is blocked for the entire duration until the
     // resize_status_ is set to kDone.
     engine_->surface_manager()->ResizeSurface(GetRenderTarget(), width, height,
                                               binding_handler_->NeedsVSync());
     resize_status_ = ResizeState::kFrameGenerated;
   }
+
+  engine_->surface_manager()->AcquireFrame();
 
   return kWindowFrameBufferID;
 }

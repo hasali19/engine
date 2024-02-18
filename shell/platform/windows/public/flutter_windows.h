@@ -90,6 +90,15 @@ FlutterDesktopViewControllerCreate(int width,
                                    int height,
                                    FlutterDesktopEngineRef engine);
 
+FLUTTER_EXPORT FlutterDesktopViewControllerRef
+FlutterDesktopViewControllerCreateForComposition(int width,
+                                                 int height,
+                                                 FlutterDesktopEngineRef engine,
+                                                 void* compositor);
+
+FLUTTER_EXPORT void* FlutterDesktopViewControllerGetCompositionVisual(
+    FlutterDesktopViewControllerRef controller);
+
 // Shuts down the engine instance associated with |controller|, and cleans up
 // associated state.
 //

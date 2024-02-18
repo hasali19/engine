@@ -100,8 +100,8 @@ bool AngleSurfaceManager::Initialize(bool enable_impeller) {
 
       // This extension allows angle to render directly on a D3D swapchain
       // in the correct orientation on D3D11.
-      EGL_EXPERIMENTAL_PRESENT_PATH_ANGLE,
-      EGL_EXPERIMENTAL_PRESENT_PATH_FAST_ANGLE,
+      // EGL_EXPERIMENTAL_PRESENT_PATH_ANGLE,
+      // EGL_EXPERIMENTAL_PRESENT_PATH_FAST_ANGLE,
 
       EGL_NONE,
   };
@@ -237,32 +237,90 @@ bool AngleSurfaceManager::CreateSurface(WindowsRenderTarget* render_target,
     return false;
   }
 
+  auto composition_target = std::get<CompositionRenderTarget>(*render_target);
+
+  Microsoft::WRL::ComPtr<ABI::Windows::UI::Composition::ICompositionObject>
+      composition_object;
+  composition_target.visual.As(&composition_object);
+
+  Microsoft::WRL::ComPtr<ABI::Windows::UI::Composition::ICompositor> compositor;
+  composition_object->get_Compositor(&compositor);
+
+  ID3D11Device* d3d11_device;
+  GetDevice(&d3d11_device);
+
+  Microsoft::WRL::ComPtr<ABI::Windows::UI::Composition::ICompositorInterop>
+      compositor_interop;
+  compositor.As(&compositor_interop);
+
+  Microsoft::WRL::ComPtr<
+      ABI::Windows::UI::Composition::ICompositionGraphicsDevice>
+      graphics_device;
+  compositor_interop->CreateGraphicsDevice(d3d11_device, &graphics_device);
+
+  Microsoft::WRL::ComPtr<
+      ABI::Windows::UI::Composition::ICompositionDrawingSurface>
+      drawing_surface;
+  graphics_device->CreateDrawingSurface(
+      {static_cast<float>(width), static_cast<float>(height)},
+      ABI::Windows::Graphics::DirectX::DirectXPixelFormat::
+          DirectXPixelFormat_B8G8R8A8UIntNormalized,
+      ABI::Windows::Graphics::DirectX::DirectXAlphaMode::
+          DirectXAlphaMode_Premultiplied,
+      &drawing_surface);
+
+  Microsoft::WRL::ComPtr<ABI::Windows::UI::Composition::ICompositionSurface>
+      surface;
+  drawing_surface.As(&surface);
+
+  Microsoft::WRL::ComPtr<
+      ABI::Windows::UI::Composition::ICompositionSurfaceBrush>
+      surface_brush;
+  compositor->CreateSurfaceBrushWithSurface(surface.Get(), &surface_brush);
+
+  Microsoft::WRL::ComPtr<ABI::Windows::UI::Composition::ICompositionBrush>
+      brush;
+  surface_brush.As(&brush);
+
+  Microsoft::WRL::ComPtr<ABI::Windows::UI::Composition::ISpriteVisual>
+      sprite_visual;
+  composition_target.visual.As(&sprite_visual);
+
+  sprite_visual->put_Brush(brush.Get());
+
+  surface_width_ = width;
+  surface_height_ = height;
+
+  drawing_surface.As(&composition_drawing_surface_interop_);
+
+  return true;
+}
+
+bool AngleSurfaceManager::AcquireFrame() {
+  ID3D11Texture2D* texture;
+  POINT offset;
+
+  composition_drawing_surface_interop_->BeginDraw(
+      nullptr, IID_ID3D11Texture2D, reinterpret_cast<void**>(&texture),
+      &offset);
+
   EGLSurface surface = EGL_NO_SURFACE;
 
-  const EGLint surfaceAttributes[] = {
-      EGL_FIXED_SIZE_ANGLE, EGL_TRUE, EGL_WIDTH, width,
-      EGL_HEIGHT,           height,   EGL_NONE};
+  const EGLint surfaceAttributes[] = {0x3490, offset.x, 0x3491, offset.y,
+                                      EGL_NONE};
 
-  surface = eglCreateWindowSurface(
-      egl_display_, egl_config_,
-      static_cast<EGLNativeWindowType>(std::get<HWND>(*render_target)),
+  surface = eglCreatePbufferFromClientBuffer(
+      egl_display_, EGL_D3D_TEXTURE_ANGLE,
+      reinterpret_cast<EGLClientBuffer>(texture), egl_config_,
       surfaceAttributes);
   if (surface == EGL_NO_SURFACE) {
     LogEglError("Surface creation failed.");
     return false;
   }
 
-  surface_width_ = width;
-  surface_height_ = height;
   render_surface_ = surface;
 
-  if (!MakeCurrent()) {
-    LogEglError("Unable to make surface current to update the swap interval");
-    return false;
-  }
-
-  SetVSyncEnabled(vsync_enabled);
-  return true;
+  return MakeCurrent();
 }
 
 void AngleSurfaceManager::ResizeSurface(WindowsRenderTarget* render_target,
@@ -330,7 +388,14 @@ bool AngleSurfaceManager::MakeResourceCurrent() {
 }
 
 EGLBoolean AngleSurfaceManager::SwapBuffers() {
-  return (eglSwapBuffers(egl_display_, render_surface_));
+  glFlush();
+
+  DestroySurface();
+  ClearCurrent();
+
+  composition_drawing_surface_interop_->EndDraw();
+
+  return true;
 }
 
 EGLSurface AngleSurfaceManager::CreateSurfaceFromHandle(

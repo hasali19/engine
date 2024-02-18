@@ -7,6 +7,7 @@
 #include <WinUser.h>
 #include <dwmapi.h>
 
+#include <windows.ui.composition.h>
 #include <chrono>
 #include <map>
 
@@ -119,6 +120,8 @@ static uint64_t ConvertWinButtonToFlutterButton(UINT button) {
 FlutterWindow::FlutterWindow(
     int width,
     int height,
+    Microsoft::WRL::ComPtr<ABI::Windows::UI::Composition::ICompositor>
+        compositor,
     std::unique_ptr<WindowsProcTable> windows_proc_table,
     std::unique_ptr<TextInputManager> text_input_manager)
     : binding_handler_delegate_(nullptr),
@@ -146,6 +149,37 @@ FlutterWindow::FlutterWindow(
 
   InitializeChild("FLUTTERVIEW", width, height);
   current_cursor_ = ::LoadCursor(nullptr, IDC_ARROW);
+
+  if (compositor) {
+    Microsoft::WRL::ComPtr<ABI::Windows::UI::Composition::ISpriteVisual>
+        sprite_visual;
+    compositor->CreateSpriteVisual(&sprite_visual);
+
+    Microsoft::WRL::ComPtr<ABI::Windows::UI::Composition::IVisual> visual;
+    sprite_visual.As(&visual);
+
+    visual->put_Size({static_cast<float>(width), static_cast<float>(height)});
+    visual->put_Offset({0, static_cast<float>(height), 0});
+
+    ABI::Windows::Foundation::Numerics::Matrix4x4 transform_matrix{};
+    transform_matrix.M11 = 1;
+    transform_matrix.M22 = -1;
+    transform_matrix.M33 = 1;
+    transform_matrix.M44 = 1;
+    visual->put_TransformMatrix(transform_matrix);
+
+    Microsoft::WRL::ComPtr<
+        ABI::Windows::UI::Composition::ICompositionColorBrush>
+        color_brush;
+    compositor->CreateColorBrushWithColor({255, 255, 255, 0}, &color_brush);
+
+    Microsoft::WRL::ComPtr<ABI::Windows::UI::Composition::ICompositionBrush>
+        brush;
+    color_brush.As(&brush);
+    sprite_visual->put_Brush(brush.Get());
+
+    visual_ = visual;
+  }
 }
 
 FlutterWindow::~FlutterWindow() {
@@ -165,7 +199,12 @@ void FlutterWindow::SetView(WindowBindingHandlerDelegate* window) {
 }
 
 WindowsRenderTarget FlutterWindow::GetRenderTarget() {
-  return WindowsRenderTarget(GetWindowHandle());
+  if (visual_) {
+    return WindowsRenderTarget(
+        CompositionRenderTarget{GetWindowHandle(), visual_});
+  } else {
+    return WindowsRenderTarget(GetWindowHandle());
+  }
 }
 
 PlatformWindow FlutterWindow::GetPlatformWindow() {
@@ -571,8 +610,6 @@ FlutterWindow::HandleMessage(UINT const message,
       width = LOWORD(lparam);
       height = HIWORD(lparam);
 
-      current_width_ = width;
-      current_height_ = height;
       HandleResize(width, height);
 
       OnWindowStateEvent(width == 0 && height == 0 ? WindowStateEvent::kHide

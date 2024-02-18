@@ -6,6 +6,8 @@
 
 #include <io.h>
 
+#include <windows.ui.composition.core.h>
+#include <wrl.h>
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -85,6 +87,44 @@ FlutterDesktopViewControllerRef FlutterDesktopViewControllerCreate(
   state->view->SendInitialBounds();
   state->view->SendInitialAccessibilityFeatures();
   return state.release();
+}
+
+FlutterDesktopViewControllerRef
+FlutterDesktopViewControllerCreateForComposition(int width,
+                                                 int height,
+                                                 FlutterDesktopEngineRef engine,
+                                                 void* _compositor) {
+  Microsoft::WRL::ComPtr<ABI::Windows::UI::Composition::ICompositor> compositor(
+      reinterpret_cast<ABI::Windows::UI::Composition::ICompositor*>(
+          _compositor));
+
+  std::unique_ptr<flutter::WindowBindingHandler> window_wrapper =
+      std::make_unique<flutter::FlutterWindow>(width, height, compositor);
+
+  auto state = std::make_unique<FlutterDesktopViewControllerState>();
+  state->view =
+      std::make_unique<flutter::FlutterWindowsView>(std::move(window_wrapper));
+  // Take ownership of the engine, starting it if necessary.
+  state->view->SetEngine(
+      std::unique_ptr<flutter::FlutterWindowsEngine>(EngineFromHandle(engine)));
+  state->view->CreateRenderSurface();
+  if (!state->view->GetEngine()->running()) {
+    if (!state->view->GetEngine()->Run()) {
+      return nullptr;
+    }
+  }
+
+  // Must happen after engine is running.
+  state->view->SendInitialBounds();
+  state->view->SendInitialAccessibilityFeatures();
+  return state.release();
+}
+
+void* FlutterDesktopViewControllerGetCompositionVisual(
+    FlutterDesktopViewControllerRef controller) {
+  auto render_target = controller->view->GetRenderTarget();
+  return std::get<flutter::CompositionRenderTarget>(*render_target)
+      .visual.Get();
 }
 
 void FlutterDesktopViewControllerDestroy(
